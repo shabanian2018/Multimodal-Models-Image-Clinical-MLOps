@@ -1,244 +1,128 @@
-Multimodal Deep Learning for Streptococcal Pharyngitis Detection
+# 🧪 Strep-Multimodal-MLOps
+# Multimodal Deep Learning for Streptococcal Pharyngitis Detection  
 
-This repository contains a reproducible multimodal deep learning pipeline for classifying streptococcal pharyngitis (strep throat) from:
+**End-to-end MLOps pipeline for strep throat classification from throat images + clinical symptoms**
 
-throat images
+---
 
-structured clinical symptom features
+## 🔍 Project Overview  
 
-The project was developed as an end-to-end take-home assignment with emphasis on:
+Diagnosis of streptococcal pharyngitis (“strep throat”) in practice relies on **both**:
 
-multimodal modeling
+- Visual inspection of the **throat image** (tonsillar exudate, redness, swelling)  
+- Structured **clinical symptoms** (fever, sore throat, congestion, known contact, etc.)
 
-rigorous evaluation
+This repository implements a **multimodal deep learning pipeline** that combines:
 
-reproducibility
+- 📷 **Throat images**  
+- 📊 **Tabular clinical features**  
 
-MLOps-based experiment tracking
+to predict **strep-positive vs strep-negative**, with:
 
-Project Overview
+- ✅ Strict held-out **test set**  
+- ✅ **5-fold cross-validation** on the training pool  
+- ✅ **Bayesian hyperparameter sweeps**  
+- ✅ Full **MLOps tracking** via Weights & Biases (W&B)  
 
-Diagnosis of strep throat often depends on both visual throat examination and clinical symptoms such as fever, sore throat, congestion, and recent exposure history. This project investigates whether deep learning can combine these complementary signals into a single predictive model.
+> Hypothesis:  
+> **Image + clinical features** → better performance and more clinically realistic decision-making than image-only models.
 
-The central hypothesis is that:
+---
 
-multimodal fusion of image and clinical features outperforms single-modality approaches
+## ⚙️ Modeling Approach  
 
-Modeling Approach
+Three multimodal architectures are implemented and compared. All image encoders are **pretrained ResNets** (18 / 50) from `torchvision`.
 
-Three multimodal architectures were implemented and evaluated.
+### 1️⃣ Gated ResNet Fusion  
 
-1. Gated ResNet Fusion
+**Idea:** Clinical symptoms “gate” the image representation.
 
-A pretrained ResNet image encoder extracts visual features, while a small MLP encodes clinical symptoms. The clinical embedding generates a gating signal that modulates the image representation before classification.
+- **Image encoder:** ResNet-18 / ResNet-50 (pretrained)  
+- **Clinical encoder:** MLP → 64-dim embedding  
+- **Fusion:**  
+  - Clinical embedding → gating vector `g`  
+  - Gated image feature: `img_mod = img_feat ⊙ g`  
+  - Concatenate `[img_mod, sym_feat]` → classifier head  
 
-Why it matters:
+**Why this model?**
 
-simple and stable multimodal fusion
+- Simple, stable **late fusion**  
+- Clinically intuitive: symptoms modulate how the image is interpreted  
+- Works well for **small datasets** with strong priors from the pretrained CNN  
 
-clinically intuitive conditioning
+---
 
-effective for small datasets
+### 2️⃣ FiLM-Conditioned ResNet Fusion  
 
-2. FiLM-Conditioned ResNet Fusion
+**Idea:** Use **Feature-wise Linear Modulation (FiLM)** to condition image features on symptoms.
 
-This model uses Feature-wise Linear Modulation (FiLM) to condition image features on clinical variables. The symptom embedding produces learned scale and shift parameters that adjust the visual embedding.
+- **Image encoder:** ResNet-18 / ResNet-50  
+- **Clinical encoder:** MLP → 128-dim embedding  
+- **Fusion:**
+  - Clinical embedding → `γ` (scale), `β` (shift)  
+  - Modulated feature: `img_mod = γ ⊙ img_feat + β`  
+  - Concatenate `[img_mod, sym_feat]` → classifier  
 
-Why it matters:
+**Why this model?**
 
-stronger cross-modal interaction than simple concatenation
+- Stronger **cross-modal interaction** than pure concatenation  
+- Parameter-efficient conditioning  
+- Aligned with **modern multimodal learning** (vision–language, CLIP-style conditioning)  
 
-parameter-efficient conditioning
+---
 
-well aligned with modern multimodal learning literature
+### 3️⃣ Perforated / Dendritic Fusion Network  
 
-3. Perforated / Dendritic Fusion Network
+**Idea:** Add a **biologically inspired “dendritic” refinement** on top of a standard multimodal MLP.
 
-This architecture introduces a biologically inspired refinement mechanism. A base multimodal network is trained first, then lightweight dendritic adapters refine the fused hidden representation in a second training phase.
+- **Base multimodal network:**  
+  - Concatenate image + clinical embeddings  
+  - Two-layer MLP (fusion hidden size 128–256)  
+- **Dendritic adapters:**  
+  - Small residual “dendrite” layers on fused hidden states  
+  - Trained in a **second phase** while backbone is frozen  
 
-Why it matters:
+**Two-phase training:**
 
-adds capacity without retraining the full backbone
+1. **Phase 1 – Backbone learning**  
+   - Train multimodal fusion network end-to-end  
+   - Early stopping on validation loss  
 
-designed for small-data settings
+2. **Phase 2 – Dendritic refinement**  
+   - Freeze backbone weights  
+   - Train only dendritic adapters:  
+     - `h₁' = h₁ + D₁(h₁)`  
+     - `h₂' = h₂ + D₂(h₂)`  
 
-explores adapter-style multimodal refinement
+**Why this model?**
 
-MLOps and Experiment Tracking
+- Adds capacity with **very few extra parameters**  
+- Designed for **small clinical datasets**  
+- Inspired by dendritic computation and adapter-style fine-tuning  
 
-Experiments were tracked using Weights & Biases (W&B) to ensure full reproducibility and systematic comparison across runs.
+---
 
-What was tracked
+## 🧬 Data & Preprocessing  
 
-model architecture
+### Inputs  
 
-backbone type
+- CSV file (e.g., `dataset_120.csv`) with columns:
+  - `ImageName`  
+  - `label` (e.g., `"Positive"` / `"Negative"`)  
+  - Symptom columns:
+    - `Hoarseness`  
+    - `Rhinorrhea`  
+    - `sorethroat`  
+    - `Congestion`  
+    - `Knownrecentcontact`  
+    - `Headache`  
+    - `Fever`  
 
-optimizer
+- Image directory:
+  - Contains the corresponding **throat images** referenced by `ImageName`.
 
-batch size
+### Label Mapping  
 
-learning rate
-
-dropout
-
-weight decay
-
-class weighting
-
-cross-validation metrics
-
-held-out test metrics
-
-learning curves
-
-generated plot artifacts
-
-MLOps advantages in this project
-
-Reproducibility: every run is versioned with full configuration
-
-Comparability: results across architectures and hyperparameters are easy to compare
-
-Auditability: plots, metrics, and model choices are transparent
-
-Scalability: Bayesian sweeps support efficient hyperparameter exploration
-
-Traceability: selected models can be tied back to exact configurations and metrics
-
-Training and Evaluation Strategy
-
-The project uses a strict evaluation design to avoid leakage.
-
-Held-out test split is created first
-
-5-fold stratified cross-validation is performed on the training pool
-
-Hyperparameters are explored with Bayesian sweeps
-
-Final model is retrained and evaluated on the held-out test set
-
-This ensures the test set remains unbiased during model selection.
-
-Metrics
-
-The pipeline tracks both threshold-based and ranking-based metrics.
-
-Cross-validation metrics
-
-validation loss
-
-accuracy
-
-precision
-
-recall
-
-Final test metrics
-
-accuracy
-
-precision
-
-recall
-
-specificity
-
-AUROC
-
-AUPRC
-
-loss
-
-Training artifacts
-
-mean CV loss plot
-
-mean CV accuracy plot
-
-mean CV precision plot
-
-mean CV recall plot
-
-Repository Structure
-.
-├── data/
-│   ├── dataset_120.csv
-│   └── images/
-├── plots/
-├── artifacts/
-├── notebooks/
-├── src/
-├── README.md
-└── requirements.txt
-
-Adjust the structure to match your final repo layout.
-
-Dataset Format
-
-The code expects a CSV with:
-
-ImageName
-
-label
-
-symptom columns such as:
-
-Hoarseness
-
-Rhinorrhea
-
-sorethroat
-
-Congestion
-
-Knownrecentcontact
-
-Headache
-
-Fever
-
-Labels are mapped as:
-
-Positive -> 1
-
-Negative -> 0
-
-Installation
-
-Create an environment and install dependencies:
-
-pip install torch torchvision pandas numpy scikit-learn pillow matplotlib wandb
-
-Login to W&B if you want sweep tracking:
-
-wandb login
-Running the Pipeline
-
-Update the dataset and image paths in the training script, then run:
-
-python train.py
-
-If using a notebook, execute the notebook cells in order after editing paths.
-
-Hyperparameter Optimization
-
-The project supports Bayesian sweeps over:
-
-model type
-
-backbone
-
-optimizer
-
-learning rate
-
-batch size
-
-dropout
-
-weight decay
-
-fusion hidden dimension
-
-early stopping settings
+```text
+Positive → 1
+Negative → 0
