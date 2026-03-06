@@ -22,10 +22,28 @@ to predict **strep-positive vs strep-negative**, with:
 - ✅ Strict held-out **test set**  
 - ✅ **5-fold cross-validation** on the training pool  
 - ✅ **Bayesian hyperparameter sweeps**  
-- ✅ Full **MLOps tracking** via [Weights & Biases (W&B)](https://wandb.ai)  
+- ✅ Full **MLOps tracking** 
 
 > **Hypothesis**  
 > Multimodal fusion of **image + clinical features** provides more robust and clinically meaningful performance than image-only models.
+
+## ⚙️ Why MLOps?  
+
+Traditional ML scripts often fail in biomedical research because they:  
+- are **hard to reproduce**,  
+- lack **version control**,  
+- do not **scale** to multiple experiments, and  
+- rarely include **monitoring or audit trails**.  
+
+MLOps brings the discipline of DevOps to ML workflows. In this project, we use [Weights & Biases (W&B)](https://wandb.ai/) to implement:
+
+- **Experiment Tracking** → Every run, dataset version, and hyperparameter is automatically logged.  
+- **Automated Hyperparameter Sweeps** → YAML-based sweeps ensure reproducible model optimization.  
+- **Code & Data Versioning** → Ensures that exact models can be reconstructed months or years later.  
+- **End-to-End Automation** → From preprocessing, training, validation, to deployment — all orchestrated programmatically.  
+- **Continuous Monitoring** → Performance metrics (accuracy, precision, recall) and feature importances are tracked in real time.  
+
+➡️ In complex datasets MLOps provides **scalability, transparency, and accountability**.
 
 ---
 
