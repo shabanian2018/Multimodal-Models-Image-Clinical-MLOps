@@ -9,8 +9,8 @@
 
 Diagnosis of streptococcal pharyngitis (“strep throat”) in practice relies on **both**:
 
-- Visual inspection of the **throat image** (tonsillar exudate, redness, swelling)  
-- Structured **clinical symptoms** (fever, sore throat, congestion, known contact, etc.)
+- Visual inspection of the **throat** (tonsillar exudate, redness, swelling)  
+- Structured **clinical symptoms** (fever, sore throat, congestion, recent contact, etc.)
 
 This repository implements a **multimodal deep learning pipeline** that combines:
 
@@ -22,33 +22,44 @@ to predict **strep-positive vs strep-negative**, with:
 - ✅ Strict held-out **test set**  
 - ✅ **5-fold cross-validation** on the training pool  
 - ✅ **Bayesian hyperparameter sweeps**  
-- ✅ Full **MLOps tracking** via Weights & Biases (W&B)  
+- ✅ Full **MLOps tracking** via [Weights & Biases (W&B)](https://wandb.ai)  
 
-> Hypothesis:  
-> **Image + clinical features** → better performance and more clinically realistic decision-making than image-only models.
+> **Hypothesis**  
+> Multimodal fusion of **image + clinical features** provides more robust and clinically meaningful performance than image-only models.
 
 ---
 
 ## ⚙️ Modeling Approach  
 
-Three multimodal architectures are implemented and compared. All image encoders are **pretrained ResNets** (18 / 50) from `torchvision`.
+Three multimodal architectures are implemented and compared. All image encoders are **pretrained ResNets** (`resnet18` / `resnet50`) from `torchvision`.
 
 ### 1️⃣ Gated ResNet Fusion  
 
 **Idea:** Clinical symptoms “gate” the image representation.
 
-- **Image encoder:** ResNet-18 / ResNet-50 (pretrained)  
+- **Image encoder:** ResNet-18 / ResNet-50 (pretrained on ImageNet)  
 - **Clinical encoder:** MLP → 64-dim embedding  
 - **Fusion:**  
   - Clinical embedding → gating vector `g`  
-  - Gated image feature: `img_mod = img_feat ⊙ g`  
-  - Concatenate `[img_mod, sym_feat]` → classifier head  
+  - Gated image feature:  
+
+    \[
+    \tilde{z}_{\text{img}} = z_{\text{img}} \odot g(x_{\text{clinical}})
+    \]
+
+  - Fused feature:  
+
+    \[
+    z_{\text{fusion}} = [\tilde{z}_{\text{img}}, z_{\text{clinical}}]
+    \]
+
+- **Classifier:** Fully connected head on `z_fusion`  
 
 **Why this model?**
 
 - Simple, stable **late fusion**  
-- Clinically intuitive: symptoms modulate how the image is interpreted  
-- Works well for **small datasets** with strong priors from the pretrained CNN  
+- Clinically intuitive conditioning (symptoms modulate how the visual signal is interpreted)  
+- Well-suited for **small datasets** with pretrained CNN backbones  
 
 ---
 
@@ -59,15 +70,26 @@ Three multimodal architectures are implemented and compared. All image encoders 
 - **Image encoder:** ResNet-18 / ResNet-50  
 - **Clinical encoder:** MLP → 128-dim embedding  
 - **Fusion:**
-  - Clinical embedding → `γ` (scale), `β` (shift)  
-  - Modulated feature: `img_mod = γ ⊙ img_feat + β`  
-  - Concatenate `[img_mod, sym_feat]` → classifier  
+  - Clinical embedding → FiLM parameters `γ` (scale), `β` (shift)  
+  - Modulated feature:  
+
+    \[
+    z_{\text{img}}' = \gamma(x_{\text{clinical}}) \odot z_{\text{img}} + \beta(x_{\text{clinical}})
+    \]
+
+  - Fused feature:  
+
+    \[
+    z_{\text{fusion}} = [z_{\text{img}}', z_{\text{clinical}}]
+    \]
+
+- **Classifier:** Fully connected head  
 
 **Why this model?**
 
-- Stronger **cross-modal interaction** than pure concatenation  
+- Richer **cross-modal interaction** than pure concatenation  
 - Parameter-efficient conditioning  
-- Aligned with **modern multimodal learning** (vision–language, CLIP-style conditioning)  
+- Aligned with modern **multimodal learning** literature (vision–language, CLIP-style conditioning)  
 
 ---
 
@@ -75,54 +97,84 @@ Three multimodal architectures are implemented and compared. All image encoders 
 
 **Idea:** Add a **biologically inspired “dendritic” refinement** on top of a standard multimodal MLP.
 
-- **Base multimodal network:**  
-  - Concatenate image + clinical embeddings  
-  - Two-layer MLP (fusion hidden size 128–256)  
-- **Dendritic adapters:**  
-  - Small residual “dendrite” layers on fused hidden states  
-  - Trained in a **second phase** while backbone is frozen  
+- **Base multimodal backbone:**
+  - Concatenate image embedding + clinical embedding  
+  - Two-layer MLP (hidden fusion dimension 128–256)  
+- **Dendritic adapters (perforated layers):**
+  - Small linear “dendrite” modules that refine hidden activations:  
 
-**Two-phase training:**
+    \[
+    h' = h + D(h_{\text{detached}})
+    \]
 
-1. **Phase 1 – Backbone learning**  
-   - Train multimodal fusion network end-to-end  
-   - Early stopping on validation loss  
-
-2. **Phase 2 – Dendritic refinement**  
-   - Freeze backbone weights  
-   - Train only dendritic adapters:  
-     - `h₁' = h₁ + D₁(h₁)`  
-     - `h₂' = h₂ + D₂(h₂)`  
+- **Two-phase training:**
+  1. **Phase 1 – Backbone learning**  
+     - Train multimodal network end-to-end  
+     - Early stopping on validation loss  
+  2. **Phase 2 – Dendritic refinement**  
+     - Freeze backbone parameters  
+     - Train only dendritic adapters on the same loss  
 
 **Why this model?**
 
-- Adds capacity with **very few extra parameters**  
-- Designed for **small clinical datasets**  
-- Inspired by dendritic computation and adapter-style fine-tuning  
+- Adds capacity with **very few additional parameters**  
+- Designed for **small-data regimes**  
+- Inspired by **dendritic computation** and adapter-style fine-tuning in modern deep learning  
 
 ---
 
 ## 🧬 Data & Preprocessing  
 
-### Inputs  
+### Dataset Format  
 
-- CSV file (e.g., `dataset_120.csv`) with columns:
-  - `ImageName`  
-  - `label` (e.g., `"Positive"` / `"Negative"`)  
-  - Symptom columns:
-    - `Hoarseness`  
-    - `Rhinorrhea`  
-    - `sorethroat`  
-    - `Congestion`  
-    - `Knownrecentcontact`  
-    - `Headache`  
-    - `Fever`  
+The pipeline expects a CSV file with the following columns.
 
-- Image directory:
-  - Contains the corresponding **throat images** referenced by `ImageName`.
+#### ✅ Required Columns  
 
-### Label Mapping  
+- `ImageName`  
+  - Filename or relative path to the throat image.  
+- `label`  
+  - String labels mapped internally to binary targets:  
+
+    ```text
+    Positive → 1
+    Negative → 0
+    ```
+
+#### 📊 Symptom Features  
+
+Example symptom variables (can be extended if needed):
+
+- `Hoarseness`  
+- `Rhinorrhea`  
+- `sorethroat`  
+- `Congestion`  
+- `Knownrecentcontact`  
+- `Headache`  
+- `Fever`  
+
+All symptom columns are:
+
+- Cast to numeric (`float32`)  
+- Non-numeric values coerced to `NaN` and imputed with `0.0`  
+
+> This design keeps the code robust to missing or slightly noisy symptom encodings.
+
+---
+
+## 📁 Repository Structure  
+
+Example structure (adapt to your final layout):
 
 ```text
-Positive → 1
-Negative → 0
+.
+├── data/
+│   ├── dataset_120.csv         # Tabular file: image names, labels, symptoms
+│   └── images/                 # Throat image files referenced by ImageName
+├── plots/                      # Generated CV mean plots (loss/acc/precision/recall)
+├── artifacts/                  # (Optional) Saved models, checkpoints, or W&B exports
+├── notebooks/                  # Exploratory notebooks / EDA / prototyping
+├── src/
+│   └── train_multimodal.py     # Main training + CV + test + W&B sweep script
+├── README.md                   # This file
+└── requirements.txt            # Python dependencies
