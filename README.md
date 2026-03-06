@@ -41,19 +41,7 @@ Three multimodal architectures are implemented and compared. All image encoders 
 - **Clinical encoder:** MLP → 64-dim embedding  
 - **Fusion:**  
   - Clinical embedding → gating vector `g`  
-  - Gated image feature:  
-
-    \[
-    \tilde{z}_{\text{img}} = z_{\text{img}} \odot g(x_{\text{clinical}})
-    \]
-
-  - Fused feature:  
-
-    \[
-    z_{\text{fusion}} = [\tilde{z}_{\text{img}}, z_{\text{clinical}}]
-    \]
-
-- **Classifier:** Fully connected head on `z_fusion`  
+  - Gated image feature:   
 
 **Why this model?**
 
@@ -72,16 +60,6 @@ Three multimodal architectures are implemented and compared. All image encoders 
 - **Fusion:**
   - Clinical embedding → FiLM parameters `γ` (scale), `β` (shift)  
   - Modulated feature:  
-
-    \[
-    z_{\text{img}}' = \gamma(x_{\text{clinical}}) \odot z_{\text{img}} + \beta(x_{\text{clinical}})
-    \]
-
-  - Fused feature:  
-
-    \[
-    z_{\text{fusion}} = [z_{\text{img}}', z_{\text{clinical}}]
-    \]
 
 - **Classifier:** Fully connected head  
 
@@ -103,9 +81,6 @@ Three multimodal architectures are implemented and compared. All image encoders 
 - **Dendritic adapters (perforated layers):**
   - Small linear “dendrite” modules that refine hidden activations:  
 
-    \[
-    h' = h + D(h_{\text{detached}})
-    \]
 
 - **Two-phase training:**
   1. **Phase 1 – Backbone learning**  
@@ -152,15 +127,6 @@ Example symptom variables (can be extended if needed):
 - `Knownrecentcontact`  
 - `Headache`  
 - `Fever`  
-
-All symptom columns are:
-
-- Cast to numeric (`float32`)  
-- Non-numeric values coerced to `NaN` and imputed with `0.0`  
-
-> This design keeps the code robust to missing or slightly noisy symptom encodings.
-
----
 
 ## 📁 Repository Structure  
 
